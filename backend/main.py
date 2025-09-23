@@ -71,13 +71,36 @@ async def serve_frontend():
             print(f"Found index.html at: {frontend_path}")
             return FileResponse(frontend_path)
     
-    # If none found, show debug info
+    # If none found, show debug info and list directory contents
     print("Index.html not found in any location")
+    
+    # List contents of /app/frontend/dist if it exists
+    frontend_dist_dir = "/app/frontend/dist"
+    if os.path.exists(frontend_dist_dir):
+        try:
+            contents = os.listdir(frontend_dist_dir)
+            print(f"Contents of {frontend_dist_dir}: {contents}")
+        except Exception as e:
+            print(f"Error listing {frontend_dist_dir}: {e}")
+    else:
+        print(f"Directory {frontend_dist_dir} does not exist")
+    
+    # Also check /app/frontend
+    frontend_dir = "/app/frontend"
+    if os.path.exists(frontend_dir):
+        try:
+            contents = os.listdir(frontend_dir)
+            print(f"Contents of {frontend_dir}: {contents}")
+        except Exception as e:
+            print(f"Error listing {frontend_dir}: {e}")
+    
     return {
         "message": "Frontend not built yet", 
         "debug_paths": possible_index_paths,
         "current_working_dir": os.getcwd(),
-        "backend_file_location": __file__
+        "backend_file_location": __file__,
+        "frontend_dist_contents": os.listdir("/app/frontend/dist") if os.path.exists("/app/frontend/dist") else "Directory not found",
+        "frontend_dir_contents": os.listdir("/app/frontend") if os.path.exists("/app/frontend") else "Directory not found"
     }
 
 class LeaveTimeResponse(BaseModel):
