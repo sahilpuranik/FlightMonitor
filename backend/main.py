@@ -35,17 +35,31 @@ app.add_middleware(
 
 # Serve static files from frontend build
 frontend_dist = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist')
+print(f"Looking for frontend dist at: {frontend_dist}")
+print(f"Frontend dist exists: {os.path.exists(frontend_dist)}")
+
 if os.path.exists(frontend_dist):
     app.mount("/static", StaticFiles(directory=frontend_dist), name="static")
+    print("Mounted static files")
 
 @app.get("/")
 async def serve_frontend():
     """Serve the React frontend"""
     frontend_path = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist', 'index.html')
+    print(f"Looking for index.html at: {frontend_path}")
+    print(f"Index.html exists: {os.path.exists(frontend_path)}")
+    
     if os.path.exists(frontend_path):
         return FileResponse(frontend_path)
     else:
-        return {"message": "Frontend not built yet"}
+        # List what's actually in the directory for debugging
+        parent_dir = os.path.dirname(frontend_path)
+        if os.path.exists(parent_dir):
+            contents = os.listdir(parent_dir)
+            print(f"Contents of {parent_dir}: {contents}")
+        else:
+            print(f"Parent directory {parent_dir} does not exist")
+        return {"message": "Frontend not built yet", "debug_path": frontend_path}
 
 class LeaveTimeResponse(BaseModel):
     leave_time: str
