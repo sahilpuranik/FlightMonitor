@@ -5,6 +5,7 @@ import os
 from datetime import datetime, timedelta
 import httpx
 import pytz
+import re
 
 # load env vars
 def load_env():
@@ -32,6 +33,34 @@ class LeaveTimeResponse(BaseModel):
     leave_time: str
     details: dict
 
+def validate_flight_number(flight: str) -> str:
+    """Validate and normalize flight number format"""
+    flight = flight.upper().strip()
+    
+    # Remove spaces and common separators
+    flight = re.sub(r'[\s\-_]', '', flight)
+    
+    # Basic regex for airline code + flight number
+    if not re.match(r'^[A-Z]{2,3}\d{1,4}$', flight):
+        raise HTTPException(
+            status_code=400, 
+            detail="Invalid flight number format. Use format like 'AA123' or 'UA456'"
+        )
+    
+    return flight
+
+def validate_address(address: str) -> str:
+    """Basic address validation"""
+    address = address.strip()
+    
+    if not address or len(address) < 5:
+        raise HTTPException(
+            status_code=400,
+            detail="Please enter a valid address (at least 5 characters)"
+        )
+    
+    return address
+
 @app.get("/when-to-leave")
 async def when_to_leave(
     flight: str = Query(..., description="Flight number"),
@@ -40,11 +69,12 @@ async def when_to_leave(
     holiday: str = Query("no", description="Holiday status"),
     checked_bags: str = Query("no", description="Has checked bags")
 ) -> LeaveTimeResponse:
-    if not flight or not address:
-        raise HTTPException(status_code=400, detail="Flight and address required")
-    
-    flight = flight.upper().strip()
-    address = address.strip()
+    # Input validation
+    try:
+        flight = validate_flight_number(flight)
+        address = validate_address(address)
+    except HTTPException:
+        raise
     
     # get api keys
     flight_api_key = os.getenv("AVIATIONSTACK_API_KEY")
@@ -89,32 +119,77 @@ async def get_flight_info(flight: str, api_key: str) -> dict:
         except Exception as e:
             print(f"FlightAware failed, falling back to AviationStack: {e}")
     
+    if not api_key:
+        raise HTTPException(
+            status_code=500, 
+            detail="Flight API not configured. Please check your API keys."
+        )
+    
     url = "http://api.aviationstack.com/v1/flights"
     params = {"access_key": api_key, "flight_iata": flight}
     
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url, params=params)
-        data = response.json()
-        
-        flights = data.get("data", [])
-        if not flights:
-            raise HTTPException(status_code=404, detail="Flight not found")
-        
-        first_flight = flights[0]
-        arrival_time = first_flight["arrival"]["scheduled"]
-        airport_name = first_flight["arrival"]["airport"]
-        airport_code = first_flight["arrival"]["iata"]
-        
-        arrival_dt = datetime.fromisoformat(arrival_time.replace('Z', '+00:00'))
-        formatted_time = arrival_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-        
-        print(f"Found flight {flight} at {formatted_time} to {airport_name} ({airport_code})")
-        
-        return {
-            "arrival_time": formatted_time,
-            "airport_name": airport_name,
-            "airport_code": airport_code
-        }
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(url, params=params)
+            
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Flight data service temporarily unavailable. Please try again later."
+                )
+            
+            data = response.json()
+            
+            # Check for API errors
+            if "error" in data:
+                error_msg = data["error"].get("info", "Unknown API error")
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"Flight API error: {error_msg}"
+                )
+            
+            flights = data.get("data", [])
+            if not flights:
+                raise HTTPException(
+                    status_code=404, 
+                    detail=f"Flight {flight} not found. Please check the flight number and try again."
+                )
+            
+            first_flight = flights[0]
+            
+            # Check if flight has arrival info
+            if not first_flight.get("arrival"):
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Flight {flight} found but no arrival information available."
+                )
+            
+            arrival_time = first_flight["arrival"]["scheduled"]
+            airport_name = first_flight["arrival"]["airport"]
+            airport_code = first_flight["arrival"]["iata"]
+            
+            arrival_dt = datetime.fromisoformat(arrival_time.replace('Z', '+00:00'))
+            formatted_time = arrival_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+            
+            print(f"Found flight {flight} at {formatted_time} to {airport_name} ({airport_code})")
+            
+            return {
+                "arrival_time": formatted_time,
+                "airport_name": airport_name,
+                "airport_code": airport_code
+            }
+    
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=503,
+            detail="Flight data request timed out. Please try again."
+        )
+    except Exception as e:
+        print(f"Unexpected error getting flight info: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail="Unable to get flight information. Please try again later."
+        )
 
 async def get_flight_info_flightaware(flight: str, api_key: str) -> dict:
     url = f"https://aeroapi.flightaware.com/aeroapi/flights/{flight}"
@@ -159,6 +234,10 @@ async def get_flight_info_flightaware(flight: str, api_key: str) -> dict:
         }
 
 async def get_drive_time(address: str, airport_name: str, airport_code: str, api_key: str) -> int:
+    if not api_key:
+        print("Google Maps API key not configured, using default drive time")
+        return 30
+    
     url = "https://maps.googleapis.com/maps/api/distancematrix/json"
     params = {
         "origins": address,
@@ -170,39 +249,65 @@ async def get_drive_time(address: str, airport_name: str, airport_code: str, api
         "traffic_model": "best_guess"
     }
     
-    async with httpx.AsyncClient() as client:
-        response = await client.get(url, params=params)
-        data = response.json()
-        
-        if data.get("status") != "OK":
-            print(f"Google Maps API error: {data.get('status')}")
-            return 30
-        
-        rows = data.get("rows", [])
-        if not rows:
-            print("Google Maps API: No rows found in response.")
-            return 30
-        
-        first_row = rows[0]
-        elements = first_row.get("elements", [])
-        if not elements:
-            print("Google Maps API: No elements found in first row.")
-            return 30
-        
-        first_element = elements[0]
-        
-        if "duration_in_traffic" in first_element:
-            duration_seconds = first_element["duration_in_traffic"]["value"]
-            print(f"traffic time: {duration_seconds} seconds")
-        elif "duration" in first_element:
-            duration_seconds = first_element["duration"]["value"]
-            print(f"normal time: {duration_seconds} seconds")
-        else:
-            print("Google Maps API: No duration or duration_in_traffic found in first element.")
-            return 30
-        
-        duration_minutes = round(duration_seconds / 60)
-        return duration_minutes
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(url, params=params)
+            data = response.json()
+            
+            status = data.get("status")
+            if status == "REQUEST_DENIED":
+                print("Google Maps API: Request denied - check API key")
+                return 30
+            elif status == "OVER_QUERY_LIMIT":
+                print("Google Maps API: Over query limit")
+                return 30
+            elif status == "INVALID_REQUEST":
+                print("Google Maps API: Invalid request")
+                return 30
+            elif status != "OK":
+                print(f"Google Maps API error: {status}")
+                return 30
+            
+            rows = data.get("rows", [])
+            if not rows:
+                print("Google Maps API: No rows found in response")
+                return 30
+            
+            first_row = rows[0]
+            elements = first_row.get("elements", [])
+            if not elements:
+                print("Google Maps API: No elements found in first row")
+                return 30
+            
+            first_element = elements[0]
+            element_status = first_element.get("status")
+            
+            if element_status == "NOT_FOUND":
+                print("Google Maps API: Address not found")
+                return 30
+            elif element_status == "ZERO_RESULTS":
+                print("Google Maps API: No route found")
+                return 30
+            
+            if "duration_in_traffic" in first_element:
+                duration_seconds = first_element["duration_in_traffic"]["value"]
+                print(f"traffic time: {duration_seconds} seconds")
+            elif "duration" in first_element:
+                duration_seconds = first_element["duration"]["value"]
+                print(f"normal time: {duration_seconds} seconds")
+            else:
+                print("Google Maps API: No duration found")
+                return 30
+            
+            duration_minutes = round(duration_seconds / 60)
+            return duration_minutes
+    
+    except httpx.TimeoutException:
+        print("Google Maps API: Request timed out")
+        return 30
+    except Exception as e:
+        print(f"Google Maps API error: {e}")
+        return 30
 
 def calculate_airport_exit_time(arrival_time: str, airport_busy: str, holiday: str, checked_bags: str) -> str:
     base_time = 58
@@ -252,19 +357,64 @@ def calculate_leave_time(airport_exit_time: str, drive_time_minutes: int, buffer
 def get_timezone_from_address(address: str) -> str:
     address_lower = address.lower()
     
-    if any(city in address_lower for city in ['new york', 'ny', 'brooklyn', 'queens', 'manhattan']):
+    # Check for ZIP codes first (more reliable)
+    zip_match = re.search(r'\b(\d{5})\b', address)
+    if zip_match:
+        zip_code = int(zip_match.group(1))
+        if 1000 <= zip_code <= 5999:  # Eastern (ME, NH, VT, MA, RI, CT, NY, NJ, PA, etc.)
+            return "US/Eastern"
+        elif 6000 <= zip_code <= 7999:  # Central (IL, WI, MN, IA, MO, AR, LA, etc.)
+            return "US/Central"
+        elif 8000 <= zip_code <= 8999:  # Mountain (CO, WY, MT, ND, SD, NE, KS, NM, UT, etc.)
+            return "US/Mountain"
+        elif 9000 <= zip_code <= 9999:  # Pacific (CA, NV, OR, WA, etc.)
+            return "US/Pacific"
+    
+    # City/state matching (fallback)
+    eastern_cities = [
+        'new york', 'ny', 'brooklyn', 'queens', 'manhattan', 'bronx', 'staten island',
+        'boston', 'philadelphia', 'washington', 'dc', 'atlanta', 'miami', 'florida', 'fl',
+        'charlotte', 'raleigh', 'richmond', 'baltimore', 'pittsburgh', 'cleveland',
+        'columbus', 'cincinnati', 'louisville', 'nashville', 'memphis', 'birmingham',
+        'jacksonville', 'orlando', 'tampa', 'fort lauderdale', 'west palm beach'
+    ]
+    
+    pacific_cities = [
+        'los angeles', 'la', 'san francisco', 'san diego', 'california', 'ca',
+        'seattle', 'portland', 'washington', 'wa', 'oregon', 'or', 'nevada', 'nv',
+        'las vegas', 'reno', 'sacramento', 'fresno', 'long beach', 'oakland',
+        'san jose', 'anaheim', 'santa ana', 'riverside', 'stockton', 'irvine'
+    ]
+    
+    central_cities = [
+        'chicago', 'illinois', 'il', 'houston', 'dallas', 'austin', 'texas', 'tx',
+        'san antonio', 'fort worth', 'el paso', 'arlington', 'corpus christi',
+        'plano', 'laredo', 'lubbock', 'madison', 'wisconsin', 'wi', 'minneapolis',
+        'minnesota', 'mn', 'st paul', 'kansas city', 'missouri', 'mo', 'st louis',
+        'milwaukee', 'detroit', 'michigan', 'mi', 'grand rapids', 'warren',
+        'new orleans', 'louisiana', 'la', 'baton rouge', 'shreveport'
+    ]
+    
+    mountain_cities = [
+        'denver', 'colorado', 'co', 'phoenix', 'arizona', 'az', 'tucson', 'mesa',
+        'chandler', 'glendale', 'scottsdale', 'gilbert', 'tempe', 'peoria',
+        'salt lake city', 'utah', 'ut', 'west valley city', 'provo', 'west jordan',
+        'orem', 'sandy', 'ogden', 'st george', 'layton', 'taylorsville',
+        'albuquerque', 'new mexico', 'nm', 'las cruces', 'rio rancho', 'santa fe',
+        'billings', 'montana', 'mt', 'missoula', 'great falls', 'bozeman',
+        'cheyenne', 'wyoming', 'wy', 'casper', 'laramie', 'gillette'
+    ]
+    
+    if any(city in address_lower for city in eastern_cities):
         return "US/Eastern"
-    elif any(city in address_lower for city in ['los angeles', 'la', 'san francisco', 'san diego', 'california', 'ca']):
+    elif any(city in address_lower for city in pacific_cities):
         return "US/Pacific"
-    elif any(city in address_lower for city in ['chicago', 'illinois', 'il']):
+    elif any(city in address_lower for city in central_cities):
         return "US/Central"
-    elif any(city in address_lower for city in ['denver', 'colorado', 'co']):
+    elif any(city in address_lower for city in mountain_cities):
         return "US/Mountain"
-    elif any(city in address_lower for city in ['miami', 'florida', 'fl', 'atlanta', 'georgia', 'ga']):
-        return "US/Eastern"
-    elif any(city in address_lower for city in ['seattle', 'washington', 'wa']):
-        return "US/Pacific"
     else:
+        # Default to Eastern for unknown locations
         return "US/Eastern"
 
 def format_time_for_user(iso_time: str, address: str) -> str:
