@@ -1,0 +1,12 @@
+{
+  "name": "flight-monitor",
+  "version": "1.0.0",
+  "description": "Flight pickup calculator app",
+  "scripts": {
+    "start": "./start.sh",
+    "build": "cd frontend && npm run build"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
