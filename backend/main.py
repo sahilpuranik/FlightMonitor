@@ -1,5 +1,7 @@
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import os
 from datetime import datetime, timedelta
@@ -7,7 +9,7 @@ import httpx
 import pytz
 import re
 
-# load env vars
+# load env vars (only if .env file exists)
 def load_env():
     env_path = os.path.join(os.path.dirname(__file__), '..', '.env')
     if os.path.exists(env_path):
@@ -17,7 +19,9 @@ def load_env():
                     key, value = line.strip().split("=", 1)
                     os.environ[key] = value
 
-load_env()
+# Only load .env file if running locally
+if os.getenv("RAILWAY_ENVIRONMENT") is None:
+    load_env()
 
 app = FastAPI(title="My Flight App", version="1.0.0")
 
@@ -28,6 +32,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Serve static files from frontend build
+frontend_dist = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist')
+if os.path.exists(frontend_dist):
+    app.mount("/static", StaticFiles(directory=frontend_dist), name="static")
+
+@app.get("/")
+async def serve_frontend():
+    """Serve the React frontend"""
+    frontend_path = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist', 'index.html')
+    if os.path.exists(frontend_path):
+        return FileResponse(frontend_path)
+    else:
+        return {"message": "Frontend not built yet"}
 
 class LeaveTimeResponse(BaseModel):
     leave_time: str
