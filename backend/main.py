@@ -34,32 +34,51 @@ app.add_middleware(
 )
 
 # Serve static files from frontend build
-frontend_dist = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist')
-print(f"Looking for frontend dist at: {frontend_dist}")
-print(f"Frontend dist exists: {os.path.exists(frontend_dist)}")
+# Try multiple possible locations for the frontend build
+possible_paths = [
+    os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist'),  # Relative from backend
+    os.path.join(os.getcwd(), 'frontend', 'dist'),  # From project root
+    '/app/frontend/dist',  # Absolute path in Railway
+    './frontend/dist',  # Relative from project root
+]
 
-if os.path.exists(frontend_dist):
+frontend_dist = None
+for path in possible_paths:
+    print(f"Checking path: {path}")
+    if os.path.exists(path):
+        frontend_dist = path
+        print(f"Found frontend dist at: {frontend_dist}")
+        break
+
+if frontend_dist and os.path.exists(frontend_dist):
     app.mount("/static", StaticFiles(directory=frontend_dist), name="static")
     print("Mounted static files")
 
 @app.get("/")
 async def serve_frontend():
     """Serve the React frontend"""
-    frontend_path = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist', 'index.html')
-    print(f"Looking for index.html at: {frontend_path}")
-    print(f"Index.html exists: {os.path.exists(frontend_path)}")
+    # Try to find index.html in multiple locations
+    possible_index_paths = [
+        os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist', 'index.html'),
+        os.path.join(os.getcwd(), 'frontend', 'dist', 'index.html'),
+        '/app/frontend/dist/index.html',
+        './frontend/dist/index.html',
+    ]
     
-    if os.path.exists(frontend_path):
-        return FileResponse(frontend_path)
-    else:
-        # List what's actually in the directory for debugging
-        parent_dir = os.path.dirname(frontend_path)
-        if os.path.exists(parent_dir):
-            contents = os.listdir(parent_dir)
-            print(f"Contents of {parent_dir}: {contents}")
-        else:
-            print(f"Parent directory {parent_dir} does not exist")
-        return {"message": "Frontend not built yet", "debug_path": frontend_path}
+    for frontend_path in possible_index_paths:
+        print(f"Looking for index.html at: {frontend_path}")
+        if os.path.exists(frontend_path):
+            print(f"Found index.html at: {frontend_path}")
+            return FileResponse(frontend_path)
+    
+    # If none found, show debug info
+    print("Index.html not found in any location")
+    return {
+        "message": "Frontend not built yet", 
+        "debug_paths": possible_index_paths,
+        "current_working_dir": os.getcwd(),
+        "backend_file_location": __file__
+    }
 
 class LeaveTimeResponse(BaseModel):
     leave_time: str
