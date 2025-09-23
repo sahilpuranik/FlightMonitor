@@ -1,14 +1,13 @@
 #!/bin/bash
 
-# Install backend dependencies
-cd backend
-pip install -r requirements.txt
-
-# Install frontend dependencies and build
-cd ../frontend
+# Install frontend dependencies and build first
+cd frontend
 npm install
 npm run build
 
-# Start the backend server
+# Install backend dependencies
 cd ../backend
+pip install -r requirements.txt
+
+# Start the backend server
 uvicorn main:app --host 0.0.0.0 --port $PORT
