@@ -25,7 +25,8 @@ function App() {
     setResult(null)
 
     try {
-      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
+      const backendUrl = import.meta.env.VITE_BACKEND_URL ||
+        (window.location.origin.includes('railway.app') ? window.location.origin : 'http://localhost:8000')
       
       const params = new URLSearchParams({
         flight: flight,
