@@ -1,38 +1,81 @@
-# Flight Pickup Calculator
+# FlightMonitor - When Should I Leave to Pick Up Someone?
 
-So I got stuck waiting at the airport for like 45 minutes once because I showed up way too early, and it got me thinking - there's got to be a better way to figure this out. That's how this project started.
+A simple web app that calculates when you should leave home to pick someone up from the airport. Just enter their flight number and your address, and it tells you the perfect departure time!
 
-This thing takes your flight number and home address, then uses a bunch of APIs to figure out when you should actually leave your house. It pulls real flight data (when the plane lands), gets driving directions from Google Maps with traffic, and then runs it through some algorithms I cobbled together based on research about how long it actually takes to get through an airport.
+## Features
 
-The cool part is it lets you customize stuff - you tell it if the airport is busy, if it's a holiday, if they have checked bags, and it adjusts the calculations. The math is basically a bunch of preset multipliers and time estimates I found online, plus variables you set. It's not super robust or anything - definitely has some shortcomings and edge cases I haven't figured out yet. But hey, it works for most normal situations.
+- 🛫 **Real Flight Data**: Gets actual flight arrival times
+- 🚗 **Live Traffic**: Uses Google Maps for current traffic conditions
+- ⏰ **Smart Timing**: Accounts for airport size, holidays, and checked bags
+- 🎨 **Simple Interface**: Clean, beginner-friendly design
 
-Really this was just my way of practicing full-stack development by solving a problem I actually had. Built the backend with FastAPI and the frontend with React. Planning to deploy it on Railway soon=.
+## How It Works
 
-## Setup
+1. Enter flight number (like "AA1234") and your home address
+2. Select airport size, holiday status, and checked bags options
+3. Get your perfect departure time with detailed breakdown
 
-1. Install dependencies:
+## Quick Start
+
+### For Railway Deployment
+
+1. Fork this repository on GitHub
+2. Connect your GitHub repo to Railway
+3. Add environment variables in Railway dashboard:
+   - `AVIATIONSTACK_API_KEY`
+   - `GOOGLE_MAPS_API_KEY`
+   - `FLIGHTAWARE_API_KEY` (optional)
+4. Deploy! Railway will automatically build and deploy your app
+
+### For Local Development
+
+1. **Clone and setup**:
+```bash
+git clone <your-repo-url>
+cd FlightMonitor
+```
+
+2. **Install Python dependencies**:
 ```bash
 pip install -r requirements.txt
 ```
 
-2. Copy environment variables:
+3. **Setup environment**:
 ```bash
-cp env.example .env
+cp .env.example .env
+# Edit .env with your API keys
 ```
 
-3. Update `.env` with your API keys
-
-4. Run the development server:
+4. **Build frontend**:
 ```bash
-uvicorn main:app --reload
+cd frontend
+npm install
+npm run build
+cd ..
 ```
+
+5. **Run the app**:
+```bash
+python -m uvicorn backend.main:app --reload
+```
+
+Visit http://localhost:8000 to use the app!
+
+## Getting API Keys
+
+- **AviationStack**: Sign up at https://aviationstack.com/ (free tier available)
+- **Google Maps**: Get key at https://developers.google.com/maps/documentation
+- **FlightAware**: Optional, get at https://flightaware.com/commercial/aeroapi/
 
 ## API Endpoints
 
-- `GET /when-to-leave?flight=AA1234&address=123 Main St` - Calculate leave time
+- `GET /` - Web interface
+- `GET /when-to-leave` - Calculate departure time
 - `GET /health` - Health check
 
-## Environment Variables
+## Tech Stack
 
-- `AVIATIONSTACK_API_KEY` - Get from https://aviationstack.com/
-- `GOOGLE_MAPS_API_KEY` - Get from https://developers.google.com/maps/documentation
+- **Backend**: FastAPI (Python)
+- **Frontend**: React + Vite
+- **Deployment**: Railway
+- **APIs**: AviationStack, Google Maps, FlightAware

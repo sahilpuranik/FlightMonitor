@@ -33,75 +33,45 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve static files from frontend build
-# Try multiple possible locations for the frontend build
-possible_paths = [
-    os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist'),  # Relative from backend
-    os.path.join(os.getcwd(), 'frontend', 'dist'),  # From project root
-    '/app/frontend/dist',  # Absolute path in Railway
-    './frontend/dist',  # Relative from project root
-]
-
-frontend_dist = None
-for path in possible_paths:
-    print(f"Checking path: {path}")
-    if os.path.exists(path):
-        frontend_dist = path
-        print(f"Found frontend dist at: {frontend_dist}")
-        break
-
-if frontend_dist and os.path.exists(frontend_dist):
-    app.mount("/static", StaticFiles(directory=frontend_dist), name="static")
-    print("Mounted static files")
+# Mount static files from frontend build directory
+frontend_dist_path = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist')
+if os.path.exists(frontend_dist_path):
+    # Mount assets directory for CSS/JS files
+    assets_path = os.path.join(frontend_dist_path, "assets")
+    if os.path.exists(assets_path):
+        app.mount("/assets", StaticFiles(directory=assets_path), name="assets")
+    # Mount favicon and other root files
+    app.mount("/static", StaticFiles(directory=frontend_dist_path), name="static")
 
 @app.get("/")
 async def serve_frontend():
     """Serve the React frontend"""
-    # Try to find index.html in multiple locations
-    possible_index_paths = [
-        os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist', 'index.html'),
-        os.path.join(os.getcwd(), 'frontend', 'dist', 'index.html'),
-        '/app/frontend/dist/index.html',
-        './frontend/dist/index.html',
-    ]
-    
-    for frontend_path in possible_index_paths:
-        print(f"Looking for index.html at: {frontend_path}")
-        if os.path.exists(frontend_path):
-            print(f"Found index.html at: {frontend_path}")
-            return FileResponse(frontend_path)
-    
-    # If none found, show debug info and list directory contents
-    print("Index.html not found in any location")
-    
-    # List contents of /app/frontend/dist if it exists
-    frontend_dist_dir = "/app/frontend/dist"
-    if os.path.exists(frontend_dist_dir):
-        try:
-            contents = os.listdir(frontend_dist_dir)
-            print(f"Contents of {frontend_dist_dir}: {contents}")
-        except Exception as e:
-            print(f"Error listing {frontend_dist_dir}: {e}")
-    else:
-        print(f"Directory {frontend_dist_dir} does not exist")
-    
-    # Also check /app/frontend
-    frontend_dir = "/app/frontend"
-    if os.path.exists(frontend_dir):
-        try:
-            contents = os.listdir(frontend_dir)
-            print(f"Contents of {frontend_dir}: {contents}")
-        except Exception as e:
-            print(f"Error listing {frontend_dir}: {e}")
-    
-    return {
-        "message": "Frontend not built yet", 
-        "debug_paths": possible_index_paths,
-        "current_working_dir": os.getcwd(),
-        "backend_file_location": __file__,
-        "frontend_dist_contents": os.listdir("/app/frontend/dist") if os.path.exists("/app/frontend/dist") else "Directory not found",
-        "frontend_dir_contents": os.listdir("/app/frontend") if os.path.exists("/app/frontend") else "Directory not found"
-    }
+    index_path = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist', 'index.html')
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    return {"message": "Frontend not available. Build the frontend first with: cd frontend && npm run build"}
+
+@app.get("/vite.svg")
+async def serve_vite_svg():
+    """Serve vite.svg favicon"""
+    svg_path = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist', 'vite.svg')
+    if os.path.exists(svg_path):
+        return FileResponse(svg_path)
+    return {"error": "vite.svg not found"}
+
+# Catch-all route for SPA routing (must be last)
+@app.get("/{full_path:path}")
+async def catch_all(full_path: str):
+    """Serve frontend for any unmatched routes (SPA routing)"""
+    # If it's an API route, return 404
+    if full_path.startswith("api/") or full_path.startswith("when-to-leave") or full_path.startswith("health"):
+        raise HTTPException(status_code=404, detail="API endpoint not found")
+
+    # For all other routes, serve the React app
+    index_path = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist', 'index.html')
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    return {"message": "Frontend not available"}
 
 class LeaveTimeResponse(BaseModel):
     leave_time: str

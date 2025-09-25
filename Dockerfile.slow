@@ -1,0 +1,27 @@
+# Simple Dockerfile for Railway deployment
+FROM python:3.11-slim
+
+# Install Node.js for building the frontend
+RUN apt-get update && apt-get install -y curl && \
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Copy and install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy frontend and install dependencies
+COPY frontend ./frontend
+WORKDIR /app/frontend
+RUN npm install && npm run build
+
+# Copy backend
+WORKDIR /app
+COPY backend ./backend
+
+# Start the server
+CMD ["sh", "-c", "python -m uvicorn backend.main:app --host 0.0.0.0 --port $PORT"]
