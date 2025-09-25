@@ -43,7 +43,6 @@ function App() {
       }
 
       const data = await response.json()
-      console.log('response:', data)
       setResult(data)
       
     } catch (err) {
@@ -221,25 +220,6 @@ function App() {
               </div>
             </div>
 
-            <details className="debug-section">
-              <summary>Debug Info (click to expand)</summary>
-              <div className="debug-content">
-                <h4>Input Parameters:</h4>
-                <pre>{JSON.stringify({
-                  flight,
-                  address,
-                  airport_busy: airportBusy,
-                  holiday: isHoliday,
-                  checked_bags: hasCheckedBags
-                }, null, 2)}</pre>
-                
-                <h4>Full API Response:</h4>
-                <pre>{JSON.stringify(result, null, 2)}</pre>
-                
-                <h4>Request URL:</h4>
-                <code>{import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'}/when-to-leave?flight={encodeURIComponent(flight)}&address={encodeURIComponent(address)}&airport_busy={airportBusy}&holiday={isHoliday}&checked_bags={hasCheckedBags}</code>
-              </div>
-            </details>
 
           </div>
         )}
