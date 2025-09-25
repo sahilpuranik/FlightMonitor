@@ -40,8 +40,6 @@ if os.path.exists(frontend_dist_path):
     assets_path = os.path.join(frontend_dist_path, "assets")
     if os.path.exists(assets_path):
         app.mount("/assets", StaticFiles(directory=assets_path), name="assets")
-    # Mount favicon and other root files
-    app.mount("/static", StaticFiles(directory=frontend_dist_path), name="static")
 
 @app.get("/")
 async def serve_frontend():
@@ -51,20 +49,12 @@ async def serve_frontend():
         return FileResponse(index_path)
     return {"message": "Frontend not available. Build the frontend first with: cd frontend && npm run build"}
 
-@app.get("/vite.svg")
-async def serve_vite_svg():
-    """Serve vite.svg favicon"""
-    svg_path = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist', 'vite.svg')
-    if os.path.exists(svg_path):
-        return FileResponse(svg_path)
-    return {"error": "vite.svg not found"}
-
 # Catch-all route for SPA routing (must be last)
 @app.get("/{full_path:path}")
 async def catch_all(full_path: str):
     """Serve frontend for any unmatched routes (SPA routing)"""
     # If it's an API route, return 404
-    if full_path.startswith("api/") or full_path.startswith("when-to-leave") or full_path.startswith("health"):
+    if full_path.startswith("when-to-leave") or full_path.startswith("health") or full_path.startswith("api"):
         raise HTTPException(status_code=404, detail="API endpoint not found")
 
     # For all other routes, serve the React app
