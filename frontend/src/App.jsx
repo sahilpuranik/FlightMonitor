@@ -56,7 +56,7 @@ function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1>✈️ My Flight App</h1>
+        <h1>✈️ FlightMonitor</h1>
         <p>When should I leave to pick someone up?</p>
       </header>
 
