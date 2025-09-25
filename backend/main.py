@@ -49,19 +49,6 @@ async def serve_frontend():
         return FileResponse(index_path)
     return {"message": "Frontend not available. Build the frontend first with: cd frontend && npm run build"}
 
-# Catch-all route for SPA routing (must be last)
-@app.get("/{full_path:path}")
-async def catch_all(full_path: str):
-    """Serve frontend for any unmatched routes (SPA routing)"""
-    # If it's an API route, return 404
-    if full_path.startswith("when-to-leave") or full_path.startswith("health") or full_path.startswith("api"):
-        raise HTTPException(status_code=404, detail="API endpoint not found")
-
-    # For all other routes, serve the React app
-    index_path = os.path.join(os.path.dirname(__file__), '..', 'frontend', 'dist', 'index.html')
-    if os.path.exists(index_path):
-        return FileResponse(index_path)
-    return {"message": "Frontend not available"}
 
 class LeaveTimeResponse(BaseModel):
     leave_time: str
